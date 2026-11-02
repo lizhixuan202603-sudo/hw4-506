@@ -4,23 +4,412 @@ format: html
 editor: visual
 ---
 
-## Quarto
+https://github.com/lizhixuan202603-sudo/hw4-506
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
 
-## Running Code
-
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+#problem 1
 
 ```{r}
-1 + 1
+# Load required libraries
+library(tidyverse)   # For data manipulation, piping, and visualization
+
+# Load the dataset from the .rds file
+nzge <- readRDS("nzge.rds")
+
+# Inspect the structure of the data (optional but good practice)
+glimpse(nzge)
 ```
 
-You can add options to executable code like this
+###a
+```{r}
+# Group by election year and voting type, then calculate total votes
+nzge %>%
+  group_by(election_year, voting_type) %>%
+  summarise(
+    total_votes = sum(votes, na.rm = TRUE),
+    .groups = "drop"  # Drops grouping after summarise to avoid warnings
+  ) %>%
+  arrange(total_votes) %>%  # Sort by total votes in ascending order
+  print(n = Inf)            # Print all rows
+```
+Explanation & Summary:
+
+Code Logic: We use group_by() to separate the data by both election_year and voting_type (ensuring Candidate and Party votes are kept distinct). summarise() calculates the total sum of the votes column. arrange() sorts the resulting table.
+
+Summary: The output shows that overall voter turnout (total votes cast) generally increased from 2002 to 2014. In every election year, there are slightly more Party votes cast than Candidate votes, which is typical as some voters may only cast a party vote.
+
+
+###b
+```{r}
+# 筛选 2014 年、仅候选人票 (Candidate)
+nzge %>%
+  filter(election_year == 2014, voting_type == "Candidate") %>%
+  group_by(party) %>%
+  summarise(
+    votes = sum(votes, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    # 计算各党占候选人总票数的百分比
+    percent = votes / sum(votes) * 100
+  ) %>%
+  arrange(desc(percent)) %>%    # 按得票百分比降序排序
+  print(n = Inf)
+```
+
+Explanation & Summary:
+
+Code Logic: We use filter() to isolate the 2014 Candidate election data. After grouping by party and calculating the total votes, mutate() creates a new percent column by dividing each party's votes by the overall sum of votes. arrange(desc()) ranks them from highest to lowest.
+
+Summary: In the 2014 Candidate election, the National Party won the majority of the votes with approximately 45.5%, followed by the Labour Party at 33.7%. The table also includes "Informal Candidate Votes" (invalid votes), which is a standard inclusion in New Zealand's official election data.
+
+
+###c
+```{r}
+# Find the winning party for each year and vote type
+nzge %>%
+  # First, aggregate total votes per year, type, and party
+  group_by(election_year, voting_type, party) %>%
+  summarise(
+    total_votes = sum(votes, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  # Then, group by year and type to find the top party
+  group_by(election_year, voting_type) %>%
+  slice_max(order_by = total_votes, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
+  # Keep only relevant columns and reshape the data
+  select(election_year, voting_type, party) %>%
+  pivot_wider(
+    names_from   = voting_type,
+    values_from  = party,
+    names_prefix = "Winner_"
+  ) %>%
+  arrange(election_year) %>%
+  print(n = Inf)
+```
+Explanation & Summary:
+
+Code Logic: We first calculate total votes per party per year per type. Then, slice_max() isolates the row with the highest votes for each election_year and voting_type. with_ties = FALSE ensures only one winner is returned. Finally, pivot_wider() reshapes the data so that the Candidate and Party winners are displayed side-by-side for each year.
+
+Summary: The table reveals a major political shift in New Zealand. From 2002 to 2005, the Labour Party dominated the Party vote. However, starting in 2008, the National Party secured both the Candidate and Party votes and maintained this dominance through 2014. Interestingly, in 2005, the National Party won the most Candidate votes, but the Labour Party won the overall Party vote—a great example of how New Zealand's MMP (Mixed-Member Proportional) electoral system works.
+
+
+Through this analysis using tidyverse and dplyr, we successfully separated and analyzed Candidate and Party votes in New Zealand's general elections. We observed that total votes have grown over time. Looking specifically at 2014, the National Party held a strong lead in Candidate votes. Furthermore, our year-by-year winner analysis highlighted the transition of power from Labour to National in 2008, and captured the nuanced 2005 election where the two vote types produced different winning parties. The use of piping (%>%) and modern dplyr functions ensured the code was readable, efficient, and free of deprecated functions.
+
+
+#problem 2
+```{r}
+# Load required libraries
+library(tidyverse)
+#install.packages("infer")
+library(infer) # For Hypothesis Testing (Q3)
+
+# Read the data directly from the web (Raw link)
+url <- "https://raw.githubusercontent.com/azhou5849/tennis-atp-sackmann-data/master/atp_matches_2019.csv"
+atp <- read_csv(url)
+```
+
+###a
+```{r}
+# Count distinct tournament IDs
+tournament_count <- atp %>%
+  distinct(tourney_id) %>%
+  count()
+
+print(tournament_count)
+```
+There were 128 tournaments that took place in 2019.
+
+###b
+```{r}
+# Find the winners: Filter for the Final match of each tournament
+tournament_winners <- atp %>%
+  filter(round == "F") %>%
+  distinct(tourney_id, winner_name)
+
+# Count how many titles each player won
+win_counts <- tournament_winners %>%
+  count(winner_name, sort = TRUE)
+
+# Find how many players won >1 tournament and the maximum number of wins
+multiple_winners_summary <- win_counts %>%
+  filter(n > 1) %>%
+  summarise(
+    players_with_multiple = n(),
+    max_titles = max(n)
+  )
+
+print(multiple_winners_summary)
+
+# See who won the most
+print(win_counts %>% filter(n == max(n)))
+```
+12 players won more than one tournament in 2019. The most winning players were Dominic Thiem and Novak Djokovic, who each won 5 tournaments.
+
+
+###c
+```{r}
+library(infer)
+
+# 1. Reshape the data to a long format to compare Winners and Losers
+ace_data <- atp %>%
+  filter(!is.na(w_ace) & !is.na(l_ace)) %>%
+  select(match_num, w_ace, l_ace) %>%
+  pivot_longer(
+    cols = c(w_ace, l_ace),
+    names_to = "role",
+    values_to = "aces"
+  ) %>%
+  mutate(
+    role = if_else(role == "w_ace", "Winner", "Loser")
+  )
+
+# 2. Calculate the observed difference in means
+observed_diff <- ace_data %>%
+  group_by(role) %>%
+  summarise(mean_aces = mean(aces)) %>%
+  summarise(diff = mean_aces[role == "Winner"] - mean_aces[role == "Loser"]) %>%
+  pull(diff)
+
+# 3. Permutation Test using the 'infer' package
+set.seed(123)
+null_dist <- ace_data %>%
+  specify(response = aces, explanatory = role) %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 1000, type = "permute") %>%
+  calculate(stat = "diff in means", order = c("Winner", "Loser"))
+
+# 4. Calculate p-value
+p_value <- null_dist %>%
+  summarise(p_value = mean(stat >= observed_diff)) %>%
+  pull(p_value)
+
+
+print(paste("Observed difference:", round(observed_diff, 2)))
+
+print(paste("P-value:", round(p_value, 4)))
+
+```
+
+Yes, there is strong evidence. The observed difference in means is 1.7, meaning winners hit an average of 1.7 more aces per match than losers. The permutation test yielded a p-value of 0 (or < 0.001), indicating this difference is highly statistically significant.
+
+
+###d
+```{r}
+# Reshape the data to a long format
+player_winrate <- atp %>%
+  select(winner_name, loser_name) %>%
+  pivot_longer(cols = c(winner_name, loser_name), 
+               names_to = "role", 
+               values_to = "player") %>%
+  mutate(won = if_else(role == "winner_name", 1, 0)) %>%
+  group_by(player) %>%
+  summarise(
+    matches = n(),
+    wins = sum(won),
+    win_rate = wins / matches,
+    .groups = "drop"
+  ) %>%
+  filter(matches >= 5) %>% 
+  arrange(desc(win_rate))
+
+print(player_winrate %>% slice_max(win_rate))
+```
+Among players with at least 5 matches, Rafael Nadal had the highest win rate. He played 69 matches, won 60, and achieved a win rate of 87.0%.
+
+
+#problem 3
 
 ```{r}
-#| echo: false
-2 * 2
+library(tidyverse)
+library(ggrepel)   # 用于优化文字标签位置
+library(scales)    # 用于格式化坐标轴（如千分位逗号）
+
+# 读取数据
+url <- "https://raw.githubusercontent.com/nytimes/covid-19-data/refs/heads/master/rolling-averages/us-states.csv"
+covid_data <- read_csv(url, show_col_types = FALSE)
+
+# 由于数据自带 cases_avg_per_100k，我们直接用即可
+# 为了图表干净，过滤掉 territories（如 Puerto Rico, Guam 等），只看 50 个州 + DC
+us_states <- state.name
+covid_clean <- covid_data %>%
+  filter(state %in% c(us_states, "District of Columbia"))
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+
+```{r}
+library(ggrepel) # 确保加载了这个包
+
+# 创建一个专门用来打标签的数据框
+label_data <- tibble(
+  date = as.Date(c("2021-01-15", "2021-09-01", "2022-01-15", "2020-07-15", "2021-04-15")),
+  y_pos = c(max_cases * 0.6, max_cases * 0.6, max_cases * 0.8, max_cases * 0.3, max_cases * 0.3),
+  label = c("Major Spike 1\n(Winter 2020-21)", "Major Spike 2\n(Delta)", "Major Spike 3\n(Omicron)", 
+            "Minor Spike\n(Summer 2020)", "Minor Spike\n(Spring 2021)"),
+  type = c("Major", "Major", "Major", "Minor", "Minor")
+)
+
+p1 <- ggplot(national_data, aes(x = date, y = national_avg)) +
+  geom_area(fill = "#2c7fb8", alpha = 0.6) +
+  geom_line(color = "#253494", linewidth = 0.8) +
+  
+  # 画竖线
+  geom_vline(xintercept = label_data$date[label_data$type == "Major"], 
+             linetype = "dashed", color = "red", linewidth = 0.8) +
+  geom_vline(xintercept = label_data$date[label_data$type == "Minor"], 
+             linetype = "dotted", color = "orange", linewidth = 0.8) +
+  
+  # 使用 ggrepel 自动排版文字，永不重叠！
+  geom_text_repel(
+    data = label_data,
+    aes(x = date, y = y_pos, label = label, color = type),
+    fontface = "bold",
+    size = 4,
+    nudge_x = 30,         # 让文字稍微往右偏一点，不要压在竖线上
+    direction = "y",      # 允许在垂直方向避让
+    box.padding = 1,      # 文字之间的间距
+    point.padding = 0.5,
+    max.overlaps = Inf,
+    show.legend = FALSE,
+    segment.color = "grey50"
+  ) +
+  
+  scale_color_manual(values = c("Major" = "red", "Minor" = "orange")) +
+  scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.1))) +
+  scale_x_date(date_labels = "%b %Y", date_breaks = "4 months") +
+  
+  labs(
+    title = "National COVID-19 Case Trajectory",
+    subtitle = "7-day rolling average of new cases, highlighting major and minor spikes",
+    x = NULL, 
+    y = "Daily New Cases (7-Day Average)",
+    caption = "Data Source: NYTimes COVID-19 Data"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    panel.grid.minor = element_blank()
+  )
+
+print(p1)
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
