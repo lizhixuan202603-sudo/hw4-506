@@ -32,7 +32,6 @@ nzge %>%
   arrange(total_votes) %>%  # Sort by total votes in ascending order
   print(n = Inf)            # Print all rows
 ```
-Explanation & Summary:
 
 Code Logic: We use group_by() to separate the data by both election_year and voting_type (ensuring Candidate and Party votes are kept distinct). summarise() calculates the total sum of the votes column. arrange() sorts the resulting table.
 
@@ -57,7 +56,6 @@ nzge %>%
   print(n = Inf)
 ```
 
-Explanation & Summary:
 
 Code Logic: We use filter() to isolate the 2014 Candidate election data. After grouping by party and calculating the total votes, mutate() creates a new percent column by dividing each party's votes by the overall sum of votes. arrange(desc()) ranks them from highest to lowest.
 
@@ -88,7 +86,6 @@ nzge %>%
   arrange(election_year) %>%
   print(n = Inf)
 ```
-Explanation & Summary:
 
 Code Logic: We first calculate total votes per party per year per type. Then, slice_max() isolates the row with the highest votes for each election_year and voting_type. with_ties = FALSE ensures only one winner is returned. Finally, pivot_wider() reshapes the data so that the Candidate and Party winners are displayed side-by-side for each year.
 
@@ -223,60 +220,76 @@ Among players with at least 5 matches, Rafael Nadal had the highest win rate. He
 
 ```{r}
 library(tidyverse)
-library(ggrepel)   # 用于优化文字标签位置
-library(scales)    # 用于格式化坐标轴（如千分位逗号）
+library(ggrepel)   
+library(scales)    
 
-# 读取数据
+#read data
 url <- "https://raw.githubusercontent.com/nytimes/covid-19-data/refs/heads/master/rolling-averages/us-states.csv"
 covid_data <- read_csv(url, show_col_types = FALSE)
 
-# 由于数据自带 cases_avg_per_100k，我们直接用即可
-# 为了图表干净，过滤掉 territories（如 Puerto Rico, Guam 等），只看 50 个州 + DC
 us_states <- state.name
 covid_clean <- covid_data %>%
   filter(state %in% c(us_states, "District of Columbia"))
 ```
 
-
+###a
 ```{r}
-library(ggrepel) # 确保加载了这个包
+#| fig-width: 12
+#| fig-height: 6
+#| warning: false
+#| message: false
+#| fig-cap: "National COVID-19 Case Trajectory: 7-day rolling average of new cases, highlighting major and minor spikes."
 
-# 创建一个专门用来打标签的数据框
+library(tidyverse)
+library(ggrepel)
+library(scales)
+
+# 1. Calculate the national daily average
+national_data <- covid_clean %>%
+  group_by(date) %>%
+  summarise(national_avg = sum(cases_avg, na.rm = TRUE))
+
+# 2. Find the maximum peak for label positioning
+max_cases <- max(national_data$national_avg, na.rm = TRUE)
+
+# 3. Create a data frame for the labels
 label_data <- tibble(
-  date = as.Date(c("2021-01-15", "2021-09-01", "2022-01-15", "2020-07-15", "2021-04-15")),
-  y_pos = c(max_cases * 0.6, max_cases * 0.6, max_cases * 0.8, max_cases * 0.3, max_cases * 0.3),
+  date = as.Date(c("2021-01-11", "2021-08-25", "2022-01-11", "2020-07-15", "2021-04-15")),
+  y_pos = c(max_cases * 0.7, max_cases * 0.5, max_cases * 0.8, max_cases * 0.3, max_cases * 0.3),
   label = c("Major Spike 1\n(Winter 2020-21)", "Major Spike 2\n(Delta)", "Major Spike 3\n(Omicron)", 
             "Minor Spike\n(Summer 2020)", "Minor Spike\n(Spring 2021)"),
   type = c("Major", "Major", "Major", "Minor", "Minor")
 )
 
+# 4. Plot the trajectory
 p1 <- ggplot(national_data, aes(x = date, y = national_avg)) +
   geom_area(fill = "#2c7fb8", alpha = 0.6) +
   geom_line(color = "#253494", linewidth = 0.8) +
   
-  # 画竖线
+  # Add vertical lines
   geom_vline(xintercept = label_data$date[label_data$type == "Major"], 
              linetype = "dashed", color = "red", linewidth = 0.8) +
   geom_vline(xintercept = label_data$date[label_data$type == "Minor"], 
              linetype = "dotted", color = "orange", linewidth = 0.8) +
   
-  # 使用 ggrepel 自动排版文字，永不重叠！
+  # Add labels using ggrepel to avoid overlapping
   geom_text_repel(
     data = label_data,
     aes(x = date, y = y_pos, label = label, color = type),
     fontface = "bold",
-    size = 4,
-    nudge_x = 30,         # 让文字稍微往右偏一点，不要压在竖线上
-    direction = "y",      # 允许在垂直方向避让
-    box.padding = 1,      # 文字之间的间距
-    point.padding = 0.5,
-    max.overlaps = Inf,
-    show.legend = FALSE,
-    segment.color = "grey50"
+    size = 4.5,
+    nudge_x = 20,         
+    direction = "y",      
+    box.padding = 0.8,    
+    force = 2,            
+    min.segment.length = 0, 
+    segment.color = "grey50",
+    show.legend = FALSE
   ) +
   
-  scale_color_manual(values = c("Major" = "red", "Minor" = "orange")) +
-  scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.1))) +
+  # Formatting
+  scale_color_manual(values = c("Major" = "red", "Minor" = "darkorange")) +
+  scale_y_continuous(labels = comma, expand = expansion(mult = c(0, 0.15))) +
   scale_x_date(date_labels = "%b %Y", date_breaks = "4 months") +
   
   labs(
@@ -295,121 +308,125 @@ p1 <- ggplot(national_data, aes(x = date, y = national_avg)) +
 
 print(p1)
 ```
+Code Logic (Q1): To visualize the national trend, I aggregated the data using group_by(date) and summarise(sum()) to get the total US daily average. I then used geom_vline and annotate to manually highlight the distinct peaks. The ggrepel package was used for the text labels to prevent overlapping, ensuring the graph is publication-ready.
+
+By observing the national 7-day average, we can identify three major spikes and several minor spikes in COVID-19 cases.
+
+The major spikes align with distinct variant-driven waves: the Winter 2020-2021 surge, the Delta variant (Fall 2021), and the massive Omicron variant (Winter 2022). The minor spikes occurred during the Summer of 2020 and Spring of 2021.
+
+This visualization supports the argument that COVID-19 transmission was not a single continuous outbreak, but rather occurred in distinct, variant-driven waves separated by periods of relative decline.
 
 
+###b
 ```{r}
+#| fig-width: 10
+#| fig-height: 6
+#| warning: false
+#| message: false
+#| fig-cap: "Trajectory Comparison: Highest vs. Lowest Overall Rates. The x-axis shows time, and the y-axis shows the 7-day average cases per 100k."
 
+# 1. Calculate the overall rate for each state and identify the extremes
+state_overall <- covid_clean %>%
+  group_by(state) %>%
+  summarise(total_rate = sum(cases_avg_per_100k, na.rm = TRUE)) %>%
+  arrange(desc(total_rate))
+
+highest_state <- state_overall$state[1]
+lowest_state <- state_overall$state[nrow(state_overall)]
+
+# 2. Filter data for only these two states
+top_bottom_data <- covid_clean %>%
+  filter(state %in% c(highest_state, lowest_state))
+
+# 3. Create the plot
+p2 <- ggplot(top_bottom_data, aes(x = date, y = cases_avg_per_100k, color = state)) +
+  geom_line(linewidth = 1.2) +
+  
+  # Use distinct colors for the highest and lowest states
+  scale_color_manual(values = setNames(c("#e31a1c", "#1f78b4"), c(highest_state, lowest_state))) +
+  scale_y_continuous(labels = comma) +
+  scale_x_date(date_labels = "%b %Y", date_breaks = "6 months") +
+  
+  # Formatting for publication
+  labs(
+    title = "Trajectory Comparison: Highest vs. Lowest Overall Rates",
+    subtitle = paste("Highest Rate State:", highest_state, "| Lowest Rate State:", lowest_state),
+    x = NULL,
+    y = "Cases per 100k (7-Day Average)",
+    color = "State"
+  ) +
+  theme_classic(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    legend.position = c(0.15, 0.85), # Place legend in the top-left empty space
+    legend.background = element_rect(fill = "white", color = "black")
+  )
+
+print(p2)
 ```
+Code Logic (Q2): I calculated the total cumulative rate for each state using sum(cases_avg_per_100k) and sorted them to find the absolute highest and lowest. I then filtered the dataset for just these two states (filter(state %in% c(highest_state, lowest_state))) and plotted their trajectories on the same time scale to visually compare their peak timing and magnitude.
+
+The state with the highest overall rate (Rhode Island) and the state with the lowest overall rate (Maine) show highly synchronized trajectories in terms of timing, but massive differences in magnitude.
+
+Both states experienced their major peaks at roughly the same times (e.g., Winter 2020-21, the Delta wave in late 2021, and the Omicron wave in Winter 2022). This synchronization strongly suggests that national or global events (such as holiday travel and the emergence of new variants) drove the timing of the waves across the country.
+
+However, Rhode Island's peaks are drastically taller than Maine's, particularly during the Omicron surge where Rhode Island peaked at over 500 cases per 100k compared to Maine's ~80 cases per 100k. This indicates that while the timing was dictated by national trends, local factors—such as population density or state-level public health policies—played a crucial role in amplifying the absolute impact of each wave.
 
 
+###c
 ```{r}
+#| fig-width: 10
+#| fig-height: 6
+#| warning: false
+#| message: false
+#| fig-cap: "The First Five States to Experience Substantial COVID-19 Spread. The dots indicate the exact date the state crossed the threshold of 1 case per 100k."
 
+# 1. Identify the first five states to cross the 1 case/100k threshold
+early_2020 <- covid_clean %>%
+  filter(date <= as.Date("2020-06-30")) %>%
+  filter(cases_avg_per_100k >= 1) %>%
+  group_by(state) %>%
+  summarise(first_date = min(date)) %>%
+  arrange(first_date) %>%
+  slice_head(n = 5)
+
+# 2. Filter data for these five states
+first_five_data <- covid_clean %>%
+  filter(state %in% early_2020$state, date <= as.Date("2020-06-30"))
+
+# 3. Plot the trajectories
+p3 <- ggplot(first_five_data, aes(x = date, y = cases_avg_per_100k, color = state)) +
+  geom_line(linewidth = 1.2) +
+  
+  # Mark the threshold points
+  geom_point(data = early_2020, aes(x = first_date, y = 1), size = 3, inherit.aes = FALSE) +
+  
+  # Formatting
+  scale_color_brewer(palette = "Set1") +
+  scale_y_continuous(labels = comma) +
+  scale_x_date(date_labels = "%b %d", date_breaks = "1 month") +
+  labs(
+    title = "The First Five States to Experience Substantial COVID-19 Spread",
+    subtitle = "Substantial spread defined as reaching a 7-day average of 1 case per 100k",
+    x = "Date (Early 2020)",
+    y = "Cases per 100k (7-Day Average)",
+    color = "State", 
+    caption = "Dots indicate the exact date the state crossed the threshold."
+  ) +
+  theme_light(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold"),
+    legend.position = "right", 
+    panel.grid.minor = element_blank()
+  )
+
+print(p3)
 ```
+Code Logic: To test if winners hit more aces than losers, I used a Permutation Test via the infer package, strictly adhering to the Tidyverse ecosystem. Because infer requires a categorical explanatory variable for a difference in means, I used pivot_longer to reshape the data so that the "role" (Winner vs. Loser) became a categorical variable. I generated 1000 null distributions by permuting the labels to calculate the p-value.
 
+By defining "substantial spread" as crossing the threshold of a 1 case per 100k rolling average, the data clearly shows that the earliest states affected were primarily major coastal and travel hubs.
 
-```{r}
+The plot highlights that District of Columbia, Louisiana, New Jersey, New York, and Washington crossed the threshold almost simultaneously in mid-March 2020 (indicated by the black dots). However, shortly after this initial milestone, New York (the purple line) experienced an explosive, vertical surge, peaking at over 50 cases per 100k—far outpacing the other early states.
 
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-```{r}
-
-```
-
-
-
-
-
-
-
-
-
-
-
-
+This aligns with historical context: the initial wave of infections was heavily driven by international travel and dense urban centers. While states like Washington saw early cases due to travel from Asia, New York's massive spike was driven by travel from Europe, disproportionately impacting the East Coast before the virus spread inland.
 
